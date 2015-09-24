@@ -18,8 +18,103 @@ var mouse = {
     dragSelect: false,
     insideCanvas: false,
 
-    click: function () {
+    click: function (ev, rightClick) {
+        var clickedItem = this.itemUnderMouse();
+        var shiftPressed = ev.shiftKey;
 
+        if (!rightClick) {
+            if (clickedItem) {
+                if (!shiftPressed) {
+                    game.clearSelection();
+                }
+                game.selectItem(clickedItem, shiftPressed);
+            }
+        } else {
+            var uids = [];
+            if (clickedItem) {
+                if (clickedItem.type != 'terrain') {
+                    if (clickedItem.team != game.team) { // player right clicked on enemy
+                        for (var i = game.selectedItems.length - 1; i >= 0; i--) {
+                            var item = game.selectedItems[i];
+                            if (item.team == game.team && item.canAttack) {
+                                uids.push(item.uid);
+                            }
+                        }
+                        if (uids.length > 0) {
+                            game.sendCommand(uids, {type: "attack", toUid: clickedItem.uid});
+                        }
+                    } else { // player right clicked frindly unit
+                        //identify selected items from players team that can move
+                        for (var i = game.selectedItems.length - 1; i >= 0; i--) {
+                            var item = game.selectedItems[i];
+                            if (item.team == game.team && (item.type == "vehicles" ||
+                                item.type == "aircraft")) {
+                                uids.push(item.uid);
+                            }
+                        }
+                        ;
+                        // then command them to guard the clicked item
+                        if (uids.length > 0) {
+                            game.sendCommand(uids, {type: "guard", toUid: clickedItem.uid});
+                        }
+                    }
+                } else if (clickedItem.type == 'oilfield') {
+                    for (var i = game.selectedItems.length - 1; i >= 0; i--) {
+                        var item = game.selectedItems[i];
+                        if (item.team == game.team && (item.type == "vehicles" && item.name ==
+                            "harvester")) {
+                            uids.push(item.uid);
+                            break;
+                        }
+                    }
+                    if (uids.length > 0) {
+                        game.sendCommand(uids, {type: "deploy", toUid: clickedItem.uid});
+                    }
+                }
+            } else {
+                for (var i = game.selectedItems.length - 1; i >= 0; i--) {
+                    var item = game.selectedItems[i];
+                    if (item.team == game.team && (item.type == "vehicles" || item.type == "aircraft")) {
+                        uids.push(item.uid);
+                    }
+                }
+                ;
+                if (uids.length > 0) {
+                    game.sendCommand(uids, {
+                        type: "move", to: {
+                            x: mouse.gameX / game.gridSize,
+                            y: mouse.gameY / game.gridSize
+                        }
+                    });
+                }
+            }
+        }
+    },
+    itemUnderMouse: function () {
+        for (var i = game.items.length - 1; i >= 0; i--) {
+            var item = game.items[i];
+            if (item.type == "buildings" || item.type == "terrain") {
+                if (item.lifeCode != "dead"
+                    && item.x <= (mouse.gameX) / game.gridSize
+                    && item.x >= (mouse.gameX - item.baseWidth) / game.gridSize
+                    && item.y <= mouse.gameY / game.gridSize
+                    && item.y >= (mouse.gameY - item.baseHeight) / game.gridSize
+                ) {
+                    return item;
+                }
+            } else if (item.type == "aircraft") {
+                if (item.lifeCode != "dead" &&
+                    Math.pow(item.x - mouse.gameX / game.gridSize, 2) + Math.pow(item.y - (mouse.gameY + item.
+                            pixelShadowHeight) / game.gridSize, 2) < Math.pow((item.radius) / game.gridSize, 2)) {
+                    return item;
+                }
+            } else {
+                if (item.lifeCode != "dead" && Math.pow(item.x - mouse.gameX / game.gridSize, 2) + Math.
+                        pow(item.y - mouse.gameY / game.gridSize, 2) < Math.pow((item.radius) / game.gridSize, 2)) {
+                    return item;
+                }
+            }
+        }
     },
     draw: function () {
         if (this.dragSelect) {
@@ -59,8 +154,8 @@ var mouse = {
             mouse.dragSelect = false;
             return false;
         });
-        $mouseCanvas.mousedown(function(ev){
-            if(ev.which == 1) {
+        $mouseCanvas.mousedown(function (ev) {
+            if (ev.which == 1) {
                 mouse.buttonPressed = true;
                 mouse.dragX = mouse.gameX;
                 mouse.dragY = mouse.gameY;
@@ -68,22 +163,46 @@ var mouse = {
             }
             return false;
         });
-        $mouseCanvas.bind('contextmenu', function(ev){
+        $mouseCanvas.bind('contextmenu', function (ev) {
             mouse.click(ev, false);
             return false;
         });
-        $mouseCanvas.mouseup(function(ev){
+        $mouseCanvas.mouseup(function (ev) {
             var shiftPressed = ev.shiftKey;
-            if(ev.which == 1) {
+            if (ev.which == 1) {
+                //Left key was released
+                if (mouse.dragSelect) {
+                    if (!shiftPressed) {
+                        // Shift key was not pressed
+                        game.clearSelection();
+                    }
+                    var x1 = Math.min(mouse.gameX, mouse.dragX) / game.gridSize;
+                    var y1 = Math.min(mouse.gameY, mouse.dragY) / game.gridSize;
+                    var x2 = Math.max(mouse.gameX, mouse.dragX) / game.gridSize;
+                    var y2 = Math.max(mouse.gameY, mouse.dragY) / game.gridSize;
+                    for (var i = game.items.length - 1; i >= 0; i--) {
+                        var item = game.items[i];
+                        if (item.type != "buildings" && item.selectable && item.team == game.team && x1 <=
+                            item.x && x2 >= item.x) {
+                            if ((item.type == "vehicles" && y1 <= item.y && y2 >= item.y)
+                                || (item.type == "aircraft" && (y1 <= item.y - item.pixelShadowHeight / game.
+                                    gridSize) && (y2 >= item.y - item.pixelShadowHeight / game.gridSize))) {
+                                game.selectItem(item, shiftPressed);
+                            }
+                        }
+                    }
+                    ;
+
+                }
                 mouse.buttonPressed = false;
                 mouse.dragSelect = false;
             }
             return false;
         });
-        $mouseCanvas.mouseleave(function(ev){
+        $mouseCanvas.mouseleave(function (ev) {
             mouse.insideCanvas = false;
         });
-        $mouseCanvas.mouseenter(function(ev){
+        $mouseCanvas.mouseenter(function (ev) {
             mouse.buttonPressed = false;
             mouse.insideCanvas = true;
         });

@@ -102,6 +102,7 @@ function loadItem(name) {
             }
         } else {
             var constructImageName = item.spriteImages[i].name;
+            console.log(constructImageName);
             item.spriteArray[constructImageName] = {
                 name: constructImageName,
                 count: constructImageCount,
